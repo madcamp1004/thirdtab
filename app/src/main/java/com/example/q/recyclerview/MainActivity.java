@@ -69,6 +69,9 @@ public class MainActivity extends AppCompatActivity {
     private BluetoothDevice bluetoothDevice; // 블루투스 디바이스
     private int pairedDeviceNum;
 
+    String mConnectedDeviceName;
+    String mConnectedDeviceAddress;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -140,6 +143,22 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+
+        // Performing this check in onResume() covers the case in which BT was
+        // not enabled during onStart(), so we were paused to enable it...
+        // onResume() will be called when ACTION_REQUEST_ENABLE activity returns.
+        if (mBluetoothManager != null) {
+            // Only if the state is STATE_NONE, do we know that we haven't started already
+            if (mBluetoothManager.getState() == mBluetoothManager.STATE_NONE) {
+                // Start the Bluetooth chat services
+                mBluetoothManager.start();
+            }
+        }
+    }
+
     private void shareScreenshot() {
         selectBluetoothDevice();
     }
@@ -149,6 +168,13 @@ public class MainActivity extends AppCompatActivity {
         mBluetoothManager = new BluetoothManager(this, mHandler);
     }
 
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        if (mBluetoothManager != null) {
+            mBluetoothManager.stop();
+        }
+    }
     @SuppressLint("HandlerLeak")
     private final Handler mHandler = new Handler() {
         @Override
@@ -185,7 +211,9 @@ public class MainActivity extends AppCompatActivity {
                     break;
                 case Constants.MESSAGE_DEVICE_NAME:
                     // save the connected device's name
-                    String mConnectedDeviceName = msg.getData().getString(Constants.DEVICE_NAME);
+                    mConnectedDeviceName = msg.getData().getString(Constants.DEVICE_NAME);
+                    mConnectedDeviceAddress = msg.getData().getString(Constants.DEVICE_ADDRESS);
+
                     if (null != this) {
                         Toast.makeText(getApplicationContext(), "Connected to " + mConnectedDeviceName, Toast.LENGTH_SHORT).show();
                     }
@@ -302,6 +330,14 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private String getDeviceProperty(BluetoothDevice device) {
+        return device.getName() +": " + device.getAddress();
+    }
+
+    private String getDeviceProperty(String name, String addr) {
+        return name +": " + addr;
+    }
+
     public void selectBluetoothDevice() {
 
         // 이미 페어링 되어있는 블루투스 기기를 찾습니다.
@@ -335,11 +371,11 @@ public class MainActivity extends AppCompatActivity {
             builder.setTitle("Device List");
 
             // 페어링 된 각각의 디바이스의 이름과 주소를 저장
-            List<String> list = new ArrayList<>();
+            final List<String> list = new ArrayList<>();
 
             // 모든 디바이스의 이름을 리스트에 추가
             for (BluetoothDevice tmpDevice : deviceSet) {
-                list.add(tmpDevice.getName() +": " + tmpDevice.getAddress());
+                list.add(getDeviceProperty(tmpDevice));
             }
 
             list.add("취소");
@@ -353,8 +389,10 @@ public class MainActivity extends AppCompatActivity {
             builder.setItems(charSequences, new DialogInterface.OnClickListener() {
                 @Override
                 public void onClick(DialogInterface dialog, int which) {
-                    // 해당 디바이스와 연결하는 함수 호출
-                    if (which != listSize) {
+                    // 취소시 리턴
+                    if (which == (listSize-1)) {
+                        return;
+                    } else {
                         connectDevice(charSequences[which].toString());
                     }
                 }
@@ -371,10 +409,16 @@ public class MainActivity extends AppCompatActivity {
 
     public void connectDevice(String deviceProperty) {
 
+        if((mConnectedDeviceAddress != null) && (getDeviceProperty(mConnectedDeviceName, mConnectedDeviceAddress).equals(deviceProperty))) {
+            Log.i("***EE", "JUST SEND IT!");
+            SendJSON();
+            return;
+        }
+
         // 페어링 된 디바이스들을 모두 탐색
         for (BluetoothDevice tempDevice : deviceSet) {
             // 사용자가 선택한 이름과 같은 디바이스로 설정하고 반복문 종료
-            if (deviceProperty.equals(tempDevice.getName() +": " + tempDevice.getAddress())) {
+            if (deviceProperty.equals(getDeviceProperty(tempDevice))) {
                 bluetoothDevice = tempDevice;
                 break;
             }
